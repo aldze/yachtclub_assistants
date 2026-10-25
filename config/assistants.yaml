@@ -1,0 +1,87 @@
+# Паспорта ассистентов: модель, параметры, файлы промпта и базы знаний, инструменты.
+# Читается кодом и сборщиком документа (tools/build_docx.py).
+
+defaults:
+  provider: openai          # openai | yandex | gigachat | anthropic — см. .env.example
+  model: gpt-4.1-mini       # переопределяется в .env (LLM_MODEL)
+  temperature: 0.4          # бот поддержки — 0.3–0.5 (урок PEs02)
+  max_tokens: 800
+
+assistants:
+  sales:
+    name: "Лоцман"
+    title: "Консультант отдела продаж"
+    audience: "Потенциальные покупатели катеров и яхт"
+    channels: ["чат на сайте", "Telegram", "MAX"]
+    goal: "Конверсия и скорость ответа: выявить потребность, предложить лодки, передать тёплый запрос менеджеру"
+    temperature: 0.4
+    prompt: prompts/sales.md
+    knowledge:
+      - knowledge/common/company.md
+      - knowledge/common/contacts.md
+      - knowledge/common/glossary.md
+      - knowledge/sales/faq.md
+      - knowledge/sales/requests.md
+      - knowledge/sales/scripts.md
+      - knowledge/service/warranty.md
+    tools: [create_handoff]
+    conversation_starters:
+      - "Помогите выбрать катер для семьи"
+      - "Какие яхты подойдут для Чёрного моря?"
+      - "Хочу продать свою лодку"
+      - "Можно ли купить катер в лизинг?"
+
+  service:
+    name: "Боцман"
+    title: "Ассистент сервиса и постпродажи"
+    audience: "Владельцы лодок"
+    channels: ["чат на сайте", "Telegram"]
+    goal: "Удержание: гарантия, ТО, хранение, стоянка, работа с жалобами"
+    temperature: 0.3
+    prompt: prompts/service.md
+    knowledge:
+      - knowledge/common/company.md
+      - knowledge/common/contacts.md
+      - knowledge/common/glossary.md
+      - knowledge/service/faq.md
+      - knowledge/service/warranty.md
+      - knowledge/service/requests.md
+      - knowledge/service/scripts.md
+    tools: [create_handoff]
+    conversation_starters:
+      - "Как оформить гарантийное обращение?"
+      - "Хочу поставить катер на зимнее хранение"
+      - "Когда делать ТО?"
+      - "Нужно место в яхт-клубе на сезон"
+
+  hr:
+    name: "Штурман"
+    title: "HR-ассистент"
+    audience: "Кандидаты на вакансии"
+    channels: ["страница «Карьера» на сайте", "Telegram", "работные сайты"]
+    goal: "Скорость ответа кандидатам, предварительный отбор, запись на интервью"
+    temperature: 0.3
+    prompt: prompts/hr.md
+    knowledge:
+      - knowledge/common/company.md
+      - knowledge/common/contacts.md
+      - knowledge/hr/vacancies.md
+      - knowledge/hr/faq.md
+      - knowledge/hr/requests.md
+      - knowledge/hr/scripts.md
+    tools: [create_handoff, get_interview_slots, book_interview]
+    conversation_starters:
+      - "Какие у вас есть вакансии?"
+      - "Хочу откликнуться на вакансию"
+      - "Записаться на собеседование"
+      - "Какой статус моего отклика?"
+
+# Куда уходят карточки передачи (этап 2): чат отдела в Telegram или e-mail.
+departments:
+  sales:        { title: "Продажи",              notify: "TG_CHAT_SALES" }
+  brokerage:    { title: "Брокеридж",            notify: "TG_CHAT_SALES" }
+  service:      { title: "Сервис",               notify: "TG_CHAT_SERVICE" }
+  warranty:     { title: "Гарантия",             notify: "TG_CHAT_SERVICE" }
+  berthing:     { title: "Стоянка",              notify: "TG_CHAT_SERVICE" }
+  service_head: { title: "Руководитель сервиса", notify: "TG_CHAT_SERVICE_HEAD" }
+  hr:           { title: "HR",                   notify: "TG_CHAT_HR" }

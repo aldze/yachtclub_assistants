@@ -1,0 +1,18 @@
+# Ядро
+pyyaml>=6.0
+python-dotenv>=1.0
+jsonschema>=4.21
+
+# Провайдеры LLM
+openai>=1.40
+anthropic>=0.40
+gigachat>=0.1.30
+
+# Каналы
+aiogram>=3.4
+
+# Сборка Word-документа (tools/build_docx.py; еще нужен pandoc)
+python-docx>=1.1
+
+# Тесты
+pytest>=8.0

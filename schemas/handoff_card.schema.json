@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "handoff_card.schema.json",
+  "title": "Карточка передачи обращения в отдел",
+  "description": "Единый формат передачи диалога от ассистента в отдел. Используется как параметры инструмента create_handoff и как формат хранения.",
+  "type": "object",
+  "required": ["source_assistant", "target_department", "priority", "topic", "summary", "pd_consent", "next_step"],
+  "additionalProperties": false,
+  "properties": {
+    "card_id": { "type": "string", "description": "Заполняется системой" },
+    "created_at": { "type": "string", "format": "date-time", "description": "Заполняется системой" },
+    "conversation_id": { "type": "string", "description": "Заполняется системой" },
+    "channel": { "type": "string", "enum": ["web", "telegram", "max", "vk", "cli", "other"], "description": "Заполняется системой" },
+
+    "source_assistant": { "type": "string", "enum": ["sales", "service", "hr"] },
+    "target_department": {
+      "type": "string",
+      "enum": ["sales", "brokerage", "service", "warranty", "berthing", "service_head", "hr"],
+      "description": "Продажи | Брокеридж | Сервис | Гарантия | Стоянка | Руководитель сервиса | HR"
+    },
+    "priority": { "type": "string", "enum": ["normal", "high", "urgent"] },
+    "topic": { "type": "string", "maxLength": 120, "description": "Короткая тема: «подбор катера», «гарантия: генератор», «интервью: моторист»" },
+    "summary": { "type": "string", "maxLength": 500, "description": "1–2 предложения: суть запроса" },
+
+    "pd_consent": { "type": "boolean", "description": "Согласие на обработку ПДн получено в диалоге. Если false — блок contact не заполняется" },
+    "contact": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "messenger": { "type": "string" },
+        "email": { "type": "string" },
+        "city": { "type": "string" },
+        "preferred_time": { "type": "string" }
+      }
+    },
+
+    "details": {
+      "type": "object",
+      "description": "Структурированные детали по типу ассистента",
+      "properties": {
+        "purpose": { "type": "string", "description": "sales: назначение лодки" },
+        "waters": { "type": "string", "description": "sales: акватория" },
+        "guests": { "type": "string" },
+        "experience": { "type": "string" },
+        "budget": { "type": "string" },
+        "timeline": { "type": "string" },
+        "models_of_interest": { "type": "array", "items": { "type": "string" } },
+
+        "boat_model": { "type": "string", "description": "service/brokerage" },
+        "boat_year": { "type": "string" },
+        "hin_or_contract": { "type": "string" },
+        "engine": { "type": "string" },
+        "engine_hours": { "type": "string" },
+        "boat_location": { "type": "string" },
+        "issue": { "type": "string" },
+        "media_attached": { "type": "boolean" },
+        "desired_dates": { "type": "string" },
+
+        "vacancy": { "type": "string", "description": "hr" },
+        "screening_answers": { "type": "array", "items": { "type": "object", "properties": { "q": { "type": "string" }, "a": { "type": "string" } } } },
+        "resume": { "type": "string" },
+        "interview_slot": { "type": "string" },
+        "hr_topic": { "type": "string", "enum": ["application", "interview", "status", "talent_pool"] }
+      }
+    },
+
+    "next_step": { "type": "string", "description": "звонок | встреча | показ на воде | осмотр | запись на ТО | смета | подтверждение интервью | резерв" }
+  }
+}

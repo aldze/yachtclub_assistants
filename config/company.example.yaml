@@ -1,0 +1,34 @@
+# Легенда компании для учебного проекта (обезличенные данные).
+# Все значения подставляются в промпты и базу знаний вместо {{КЛЮЧ}}.
+#
+# Для реального заказчика: скопируйте этот файл в config/company.local.yaml
+# (он в .gitignore) и заполните реальными значениями. Код берёт local, если он есть.
+#
+# Любые совпадения с реальными компаниями, адресами, телефонами и аккаунтами случайны.
+# Домен .example зарезервирован (RFC 2606) и не может принадлежать реальной организации.
+
+COMPANY: "Северный Бриз Яхтинг"
+COMPANY_SHORT: "Северный Бриз"
+YEARS: "более 30 лет"
+CITIES: "Москва, Санкт-Петербург, Сочи"
+OFFICE_ADDRESS: "Москва, ул. Примерная, 1 (условный адрес)"
+
+SITE: "nordbreeze-yachting.example"
+PRIVACY_URL: "nordbreeze-yachting.example/privacy"
+PHONE: "+7 (495) 000-00-00"
+PHONE_FREE: "8 (800) 000-00-00"
+EMAIL: "info@nordbreeze-yachting.example"
+SALES_TG: "@nordbreeze_sales_demo"
+
+SERVICE_NAME: "Бриз Сервис"
+SERVICE_PHONE: "+7 (495) 000-00-01"
+SERVICE_EMAIL: "service@nordbreeze-yachting.example"
+SERVICE_TG: "@nordbreeze_service_demo"
+
+HR_EMAIL: "hr@nordbreeze-yachting.example"
+HR_TG: "@nordbreeze_hr_demo"
+
+WORK_HOURS: "чат-ассистенты отвечают круглосуточно; менеджеры работают ежедневно с 9:00 до 21:00 (МСК)"
+SLA_SALES: "в течение часа в рабочее время (ежедневно 9:00–21:00 МСК), а если вы написали ночью — утром"
+SLA_SERVICE: "в течение одного рабочего дня, срочные обращения — в течение двух часов"
+SLA_HR: "в течение трёх рабочих дней"

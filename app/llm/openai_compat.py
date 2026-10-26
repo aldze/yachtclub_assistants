@@ -8,6 +8,8 @@ import openai
 
 from app.llm.base import LLMClient, LLMError, Reply, ToolCall
 
+DEFAULT_BASE_URL = "https://api.openai.com/v1"
+
 
 class OpenAICompatClient(LLMClient):
     def __init__(self, model: str, temperature: float, max_tokens: int,
@@ -18,7 +20,8 @@ class OpenAICompatClient(LLMClient):
         if not api_key:
             raise LLMError("Не задан OPENAI_API_KEY: пропишите ключ в файле .env (образец — .env.example)")
         self.base_url = base_url
-        self._client = openai.OpenAI(api_key=api_key, base_url=base_url)
+        # Адрес передаем явно: иначе SDK сам читает OPENAI_BASE_URL и пустая строка из .env ломает запрос
+        self._client = openai.OpenAI(api_key=api_key, base_url=base_url or DEFAULT_BASE_URL)
 
     def chat(self, messages: list[dict], tools: list[dict] | None = None) -> Reply:
         params: dict = {"model": self.model, "messages": messages, "temperature": self.temperature}
@@ -35,8 +38,10 @@ class OpenAICompatClient(LLMClient):
             raise LLMError(f"Модель «{self.model}» не найдена у провайдера — проверьте LLM_MODEL") from None
         except openai.RateLimitError:
             raise LLMError("Превышен лимит запросов или закончился баланс у провайдера") from None
-        except openai.APIConnectionError:
-            raise LLMError("Нет связи с провайдером LLM — проверьте интернет и OPENAI_BASE_URL") from None
+        except openai.APIConnectionError as e:
+            cause = e.__cause__ or e.__context__
+            detail = f" ({cause})" if cause else ""
+            raise LLMError(f"Нет связи с провайдером LLM — проверьте интернет и OPENAI_BASE_URL{detail}") from None
         except openai.APIError as e:
             raise LLMError(f"Ошибка провайдера LLM: {e}") from None
 

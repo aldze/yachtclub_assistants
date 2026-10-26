@@ -22,37 +22,18 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+# Подстановка {{КЛЮЧ}} и front matter — общие с ассистентами, живут в app/config.py
+from app.config import PLACEHOLDER, ConfigError, load_company, render, strip_front_matter  # noqa: E402
+from app.prompts import PROMPT_LIMIT  # noqa: E402
+
 BUILD = ROOT / "build"
 DOCX_NAME = "Нейроассистенты_яхты.docx"
-PROMPT_LIMIT = 8000  # лимит поля Instructions в Custom GPTs
-PLACEHOLDER = re.compile(r"\{\{(\w+)\}\}")
 TYPE_RU = {
     "typical": "Типовой", "out_of_kb": "Вне базы", "off_topic": "Не по теме",
     "provocation": "Провокация", "injection": "Инъекция", "pd": "ПДн",
 }
-
-
-def load_company() -> tuple[dict, str]:
-    local = ROOT / "config" / "company.local.yaml"
-    path = local if local.exists() else ROOT / "config" / "company.example.yaml"
-    return yaml.safe_load(path.read_text(encoding="utf-8")), path.name
-
-
-def render(text: str, company: dict, where: str = "") -> str:
-    def sub(m: re.Match) -> str:
-        key = m.group(1)
-        if key not in company:
-            raise KeyError(f"Неизвестный плейсхолдер {{{{{key}}}}} в {where}")
-        return str(company[key])
-    return PLACEHOLDER.sub(sub, text)
-
-
-def strip_front_matter(text: str) -> str:
-    if text.startswith("---\n"):
-        end = text.find("\n---\n", 4)
-        if end != -1:
-            return text[end + 5:].lstrip("\n")
-    return text
 
 
 def content_files() -> list[Path]:
@@ -73,7 +54,7 @@ def check(company: dict) -> list[str]:
         p = ROOT / a["prompt"]
         try:
             text = render(p.read_text(encoding="utf-8"), company, a["prompt"])
-        except KeyError as e:
+        except ConfigError as e:
             errors.append(str(e)); continue
         n = len(text)
         status = "OK" if n <= PROMPT_LIMIT else "СЛИШКОМ ДЛИННЫЙ"

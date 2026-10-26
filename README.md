@@ -28,6 +28,15 @@ python tools/build_docx.py --check   # длина промптов, плейсх
 python tools/build_docx.py           # build/rendered/ + build/Нейроассистенты_яхты.docx
 ```
 
+## Чат с ассистентом в терминале
+```bash
+cp .env.example .env                 # и впишите OPENAI_API_KEY
+source .venv/bin/activate
+python -m app.channels.cli --assistant sales    # sales | service | hr
+pytest                               # тесты без обращения к LLM
+```
+В чате: `/switch service` — передать разговор Боцману (история сохраняется), `/reset` — начать заново, `/prompt` — размер системного промпта, `/exit` — выход.
+
 ## Учебная и реальная версии
 - Учебная: данные из `config/company.example.yaml` (вымышленная компания).
 - Реальная: создайте `config/company.local.yaml` с теми же ключами и реальными значениями — он в `.gitignore` и подхватывается автоматически.

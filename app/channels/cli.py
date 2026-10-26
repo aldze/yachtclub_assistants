@@ -3,18 +3,20 @@
     python -m app.channels.cli --assistant sales
 
 Команды: /reset — новый диалог, /switch <id> — сменить ассистента (история сохраняется),
-/prompt — размер системного промпта, /help, /exit.
+/prompt — размер системного промпта, /cards — карточки передачи этого диалога, /help, /exit.
 """
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 
 from app.chat import Conversation
 from app.config import ConfigError, load_env, load_passports
 from app.llm import LLMError
 
-HELP = "Команды: /reset — новый диалог, /switch <id> — сменить ассистента, /prompt — размер промпта, /exit — выход"
+HELP = ("Команды: /reset — новый диалог, /switch <id> — сменить ассистента, /prompt — размер промпта,\n"
+        "         /cards — карточки передачи этого диалога, /exit — выход")
 
 
 def print_intro(conv: Conversation) -> None:
@@ -46,6 +48,11 @@ def handle_command(conv: Conversation, line: str) -> bool:
     elif cmd == "/prompt":
         text = conv.system_prompt()
         print(f"Системный промпт {conv.active}: {len(text)} знаков, ~{len(text) // 3} токенов")
+    elif cmd == "/cards":
+        if not conv.cards:
+            print("В этом диалоге карточек передачи пока нет.")
+        for card in conv.cards:
+            print(json.dumps(card, ensure_ascii=False, indent=2))
     else:
         print(HELP)
     return True
@@ -78,12 +85,15 @@ def main() -> int:
             if not handle_command(conv, line):
                 return 0
             continue
+        cards_before = len(conv.cards)
         try:
             reply = conv.send(line)
         except LLMError as e:
             print(f"[ошибка] {e}")
             continue
         print(f"\n{conv.passport.name}: {reply.text}")
+        if len(conv.cards) > cards_before:
+            print(f"[создана карточка передачи №{conv.cards[-1]['card_id']} — /cards покажет ее целиком]")
 
 
 if __name__ == "__main__":

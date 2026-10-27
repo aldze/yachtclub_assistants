@@ -24,17 +24,22 @@ def compare(before: dict, after: dict) -> str:
         f"{sa['cases_passed']}/{sa['cases']} ({sa['percent']} %), приемка "
         f"{'✅' if sb['accepted'] else '❌'} → {'✅' if sa['accepted'] else '❌'}",
     ]
+
+    def runs(case: dict) -> str:
+        return f" {case['runs_passed']}/{case['runs']}" if case.get("runs", 1) > 1 else ""
+
     for cid in sorted(old.keys() | new.keys()):
         was, now = old.get(cid), new.get(cid)
         if was is None or now is None:
             lines.append(f"  {cid}: {'новый кейс' if was is None else 'кейс удален'}")
         elif was["passed"] != now["passed"]:
             arrow = "исправлен ✅" if now["passed"] else "СЛОМАН ❌"
-            lines.append(f"  {cid}: {arrow}")
+            lines.append(f"  {cid}: {arrow} (было{runs(was) or ' ' + ('✅' if was['passed'] else '❌')},"
+                         f" стало{runs(now) or ' ' + ('✅' if now['passed'] else '❌')})")
             if not now["passed"]:
                 lines += [f"      - {c['text']}: {c['reason']}" for c in now["criteria"] if not c["passed"]]
         elif not now["passed"]:
-            lines.append(f"  {cid}: по-прежнему ❌")
+            lines.append(f"  {cid}: по-прежнему ❌ (было{runs(was) or ' ❌'}, стало{runs(now) or ' ❌'})")
     return "\n".join(lines)
 
 

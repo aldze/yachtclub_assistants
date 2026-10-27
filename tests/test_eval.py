@@ -2,7 +2,7 @@
 import json
 
 from app.llm import LLMClient, Reply
-from eval.run import CaseResult, Criterion, judge, summary
+from eval.run import CaseOutcome, CaseResult, Criterion, failed_texts, judge, summary
 
 
 class FakeJudge(LLMClient):
@@ -46,3 +46,20 @@ def test_summary_requires_strict_types():
 def test_error_case_fails():
     r = CaseResult("S01", "typical", [], criteria=[Criterion("M1", "must", "x", passed=True)], error="сеть")
     assert r.passed is False
+
+
+def attempt(ok):
+    return CaseResult("S04", "typical", [], criteria=[Criterion("M1", "must", "брокерский отдел", passed=ok)])
+
+
+def test_repeat_passes_only_if_all_runs_pass():
+    flaky = CaseOutcome("S04", "typical", [attempt(True), attempt(False), attempt(True)])
+    assert not flaky.passed and flaky.runs_passed == 2
+    assert flaky.shown is flaky.attempts[1]  # в отчет идет проваленный прогон
+    assert failed_texts(flaky) == "брокерский отдел (1/3)"
+    assert CaseOutcome("S04", "typical", [attempt(True)] * 3).passed
+
+
+def test_summary_counts_outcomes():
+    s = summary([CaseOutcome("S01", "pd", [attempt(True), attempt(False)])])
+    assert s["cases"] == 1 and s["cases_passed"] == 0 and s["criteria"] == 2 and not s["strict_ok"]

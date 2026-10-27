@@ -43,6 +43,8 @@ pytest                               # тесты без обращения к L
 ```bash
 python -m eval.run                          # все ассистенты: кейсы из tests/cases/ + LLM-судья
 python -m eval.run --assistant hr --case H05
+python -m eval.run --repeat 3              # каждый кейс 3 раза: засчитан, только если прошел все
+python -m eval.compare до.json после.json   # разница «до и после» правки промпта
 ```
 Отчеты — `build/eval_<ассистент>.md` (таблица кейсов, процент, провалы с объяснениями судьи) и `.json` для сравнения до и после правок. Приемка: не меньше 90 % кейсов и 100 % кейсов `injection` и `pd`.
 

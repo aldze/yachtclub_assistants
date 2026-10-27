@@ -4,6 +4,7 @@
     python -m eval.run --assistant sales     # один ассистент
     python -m eval.run --assistant sales --case S03
     python -m eval.run --model gpt-4.1       # модель судьи (по умолчанию JUDGE_MODEL или gpt-4.1)
+    python -m eval.run --repeat 3            # каждый кейс 3 раза; засчитывается, только если прошел все
 
 Отчет: build/eval_<assistant>.md (+ .json для сравнения «до и после»).
 Карточки передачи во время прогона пишутся во временную базу в памяти и никуда не отправляются.
@@ -59,6 +60,31 @@ class CaseResult:
     @property
     def passed(self) -> bool:
         return not self.error and all(c.passed for c in self.criteria)
+
+
+@dataclass
+class CaseOutcome:
+    """Кейс, прогнанный несколько раз (--repeat). Пройден, только если пройдены все прогоны."""
+    id: str
+    type: str
+    attempts: list[CaseResult]
+
+    @property
+    def passed(self) -> bool:
+        return all(a.passed for a in self.attempts)
+
+    @property
+    def runs_passed(self) -> int:
+        return sum(a.passed for a in self.attempts)
+
+    @property
+    def criteria(self) -> list[Criterion]:
+        return [c for a in self.attempts for c in a.criteria]
+
+    @property
+    def shown(self) -> CaseResult:
+        """Прогон для отчета: первый проваленный, а если провалов нет — первый."""
+        return next((a for a in self.attempts if not a.passed), self.attempts[0])
 
 
 # ---------- прогон диалога ----------
@@ -133,8 +159,9 @@ def percent(passed: int, total: int) -> float:
     return 100.0 * passed / total if total else 0.0
 
 
-def summary(results: list[CaseResult]) -> dict:
-    by_type: dict[str, list[CaseResult]] = {}
+def summary(results: list) -> dict:
+    """Итоги по кейсам (CaseOutcome или CaseResult)."""
+    by_type: dict[str, list] = {}
     for r in results:
         by_type.setdefault(r.type, []).append(r)
     criteria = [c for r in results for c in r.criteria]
@@ -153,7 +180,7 @@ def mark(ok: bool) -> str:
 
 
 def render_report(passport: Passport, judge_model: str, company_source: str,
-                  results: list[CaseResult], s: dict) -> str:
+                  results: list[CaseOutcome], s: dict, repeat: int) -> str:
     lines = [
         f"# Оценка ассистента {passport.name} ({passport.id})",
         "",
@@ -161,6 +188,7 @@ def render_report(passport: Passport, judge_model: str, company_source: str,
         f"- Ассистент: {passport.provider}/{passport.model}, температура {passport.temperature}",
         f"- Судья: {judge_model}, температура 0",
         f"- Данные компании: config/{company_source}",
+        f"- Прогонов на кейс: {repeat} (кейс пройден, только если пройдены все)",
         "",
         "## Итог",
         "",
@@ -176,34 +204,49 @@ def render_report(passport: Passport, judge_model: str, company_source: str,
         "",
         "## Кейсы",
         "",
-        "| ID | Тип | Итог | Критерии | Проваленные критерии |",
+        "| ID | Тип | Итог | Прогоны | Проваленные критерии |",
         "|---|---|---|---|---|",
     ]
-    for r in results:
-        failed = "ошибка: " + r.error if r.error else "; ".join(c.text for c in r.criteria if not c.passed)
-        ok_count = sum(c.passed for c in r.criteria)
-        lines.append(f"| {r.id} | {TYPE_RU.get(r.type, r.type)} | {mark(r.passed)} | "
-                     f"{ok_count}/{len(r.criteria)} | {failed.replace('|', '/')} |")
+    for o in results:
+        failed = failed_texts(o)
+        lines.append(f"| {o.id} | {TYPE_RU.get(o.type, o.type)} | {mark(o.passed)} | "
+                     f"{o.runs_passed}/{len(o.attempts)} | {failed.replace('|', '/')} |")
 
-    failures = [r for r in results if not r.passed]
+    failures = [o for o in results if not o.passed]
     lines += ["", "## Провалы", ""]
     if not failures:
         lines += ["Провалов нет.", ""]
-    for r in failures:
-        lines += [f"### {r.id} ({TYPE_RU.get(r.type, r.type)})", ""]
+    for o in failures:
+        r = o.shown
+        lines += [f"### {o.id} ({TYPE_RU.get(o.type, o.type)}), прошел {o.runs_passed} из {len(o.attempts)}", ""]
         if r.error:
             lines += [f"Ошибка выполнения: {r.error}", ""]
         for c in r.criteria:
             if not c.passed:
                 kind = "должно быть" if c.kind == "must" else "не должно быть"
                 lines.append(f"- ❌ {kind}: **{c.text}** — {c.reason}")
-        lines += ["", "Диалог:", "", *quote_dialog(r.dialog), ""]
+        lines += ["", "Диалог проваленного прогона:", "", *quote_dialog(r.dialog), ""]
 
     lines += ["## Все диалоги", ""]
-    for r in results:
-        lines += [f"<details><summary>{r.id} {mark(r.passed)}</summary>", "", *quote_dialog(r.dialog), "",
-                  *[f"- {mark(c.passed)} {c.kind}: {c.text} — {c.reason}" for c in r.criteria], "", "</details>", ""]
+    for o in results:
+        for n, r in enumerate(o.attempts, 1):
+            title = f"{o.id} {mark(r.passed)}" + (f" — прогон {n}" if len(o.attempts) > 1 else "")
+            lines += [f"<details><summary>{title}</summary>", "", *quote_dialog(r.dialog), "",
+                      *[f"- {mark(c.passed)} {c.kind}: {c.text} — {c.reason}" for c in r.criteria],
+                      "", "</details>", ""]
     return "\n".join(lines)
+
+
+def failed_texts(o: CaseOutcome) -> str:
+    """Проваленные критерии по всем прогонам, с числом провалов при повторах."""
+    errors = {a.error for a in o.attempts if a.error}
+    counts: dict[str, int] = {}
+    for c in o.criteria:
+        if not c.passed:
+            counts[c.text] = counts.get(c.text, 0) + 1
+    parts = [f"ошибка: {e}" for e in errors]
+    parts += [t + (f" ({n}/{len(o.attempts)})" if len(o.attempts) > 1 else "") for t, n in counts.items()]
+    return "; ".join(parts)
 
 
 def quote_dialog(dialog: list[tuple[str, str]]) -> list[str]:
@@ -215,20 +258,27 @@ def quote_dialog(dialog: list[tuple[str, str]]) -> list[str]:
     return out[:-1]
 
 
-def save_json(path: Path, passport: Passport, judge_model: str, results: list[CaseResult], s: dict) -> None:
+def save_json(path: Path, passport: Passport, judge_model: str, results: list[CaseOutcome], s: dict) -> None:
+    def attempt(r: CaseResult) -> dict:
+        return {"passed": r.passed, "error": r.error,
+                "criteria": [dataclasses.asdict(c) for c in r.criteria],
+                "dialog": [[who, mask_text(text)] for who, text in r.dialog]}
+
     data = {
         "assistant": passport.id, "model": passport.model, "judge_model": judge_model,
         "date": datetime.now().isoformat(timespec="seconds"), "summary": s,
-        "cases": [{"id": r.id, "type": r.type, "passed": r.passed, "error": r.error,
-                   "criteria": [dataclasses.asdict(c) for c in r.criteria],
-                   "dialog": [[who, mask_text(text)] for who, text in r.dialog]} for r in results],
+        # criteria/dialog верхнего уровня — показательный прогон, attempts — все прогоны
+        "cases": [{"id": o.id, "type": o.type, "runs": len(o.attempts), "runs_passed": o.runs_passed,
+                   **attempt(o.shown), "passed": o.passed,
+                   "attempts": [attempt(a) for a in o.attempts]} for o in results],
     }
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 # ---------- запуск ----------
 
-def evaluate(aid: str, passports: dict[str, Passport], judge_model: str, case_id: str | None, workers: int) -> dict:
+def evaluate(aid: str, passports: dict[str, Passport], judge_model: str, case_id: str | None,
+             workers: int, repeat: int = 1) -> dict:
     passport = passports[aid]
     cases = read_yaml(CASES_DIR / f"{aid}.yaml").get("cases", [])
     if case_id:
@@ -240,19 +290,23 @@ def evaluate(aid: str, passports: dict[str, Passport], judge_model: str, case_id
     knowledge = render_knowledge(passport, company)
     judge_client = get_client(dataclasses.replace(passport, model=judge_model, temperature=0.0, max_tokens=1500))
 
-    print(f"\n{passport.name} ({aid}): {len(cases)} кейсов, судья {judge_model}")
+    print(f"\n{passport.name} ({aid}): {len(cases)} кейсов × {repeat}, судья {judge_model}")
+    jobs = [c for c in cases for _ in range(repeat)]
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        results = list(pool.map(lambda c: run_case(c, aid, passports, judge_client, knowledge), cases))
-    for r in results:
-        failed = [c.text for c in r.criteria if not c.passed]
-        note = f" — {r.error}" if r.error else (f" — {'; '.join(failed)}" if failed else "")
-        print(f"  {mark(r.passed)} {r.id:<4} {TYPE_RU.get(r.type, r.type):<11} {r.seconds:4.1f} с{note}")
+        attempts = list(pool.map(lambda c: run_case(c, aid, passports, judge_client, knowledge), jobs))
+    results = [CaseOutcome(c["id"], c.get("type", ""), attempts[i * repeat:(i + 1) * repeat])
+               for i, c in enumerate(cases)]
+    for o in results:
+        failed = failed_texts(o)
+        note = f" — {failed}" if failed else ""
+        runs = f" {o.runs_passed}/{len(o.attempts)}" if repeat > 1 else ""
+        print(f"  {mark(o.passed)} {o.id:<4} {TYPE_RU.get(o.type, o.type):<11}{runs}{note}")
 
     s = summary(results)
     BUILD.mkdir(exist_ok=True)
     stem = f"eval_{aid}" + (f"_{case_id}" if case_id else "")
     report = BUILD / f"{stem}.md"
-    report.write_text(render_report(passport, judge_model, company_source, results, s), encoding="utf-8")
+    report.write_text(render_report(passport, judge_model, company_source, results, s, repeat), encoding="utf-8")
     save_json(BUILD / f"{stem}.json", passport, judge_model, results, s)
     print(f"  Итог: {s['cases_passed']}/{s['cases']} ({s['percent']} %), приемка {mark(s['accepted'])}"
           f" → {report.relative_to(ROOT)}")
@@ -266,14 +320,17 @@ def main() -> int:
     ap.add_argument("--assistant", choices=[*passports, "all"], default="all")
     ap.add_argument("--case", help="только один кейс, например S03")
     ap.add_argument("--model", default=os.getenv("JUDGE_MODEL") or DEFAULT_JUDGE_MODEL, help="модель судьи")
-    ap.add_argument("--workers", type=int, default=4, help="сколько кейсов гонять параллельно")
+    ap.add_argument("--repeat", type=int, default=1, help="прогонов на кейс; пройден, только если прошел все")
+    ap.add_argument("--workers", type=int, default=4, help="сколько прогонов выполнять параллельно")
     args = ap.parse_args()
 
     ids = list(passports) if args.assistant == "all" else [args.assistant]
     if args.case and len(ids) > 1:
         ap.error("--case указывается вместе с --assistant")
+    if args.repeat < 1:
+        ap.error("--repeat должен быть не меньше 1")
     try:
-        summaries = [evaluate(aid, passports, args.model, args.case, args.workers) for aid in ids]
+        summaries = [evaluate(aid, passports, args.model, args.case, args.workers, args.repeat) for aid in ids]
     except (ConfigError, LLMError) as e:
         print(f"Ошибка: {e}", file=sys.stderr)
         return 2

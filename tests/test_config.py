@@ -1,6 +1,8 @@
 """Тесты app/config.py: подстановка плейсхолдеров, выбор файла компании, паспорта."""
 import shutil
 
+import yaml
+
 import pytest
 
 from app.config import (
@@ -92,8 +94,10 @@ def test_env_overrides_defaults(monkeypatch):
 
 def test_passport_value_beats_env(project, monkeypatch):
     path = project / "config" / "assistants.yaml"
-    path.write_text(path.read_text(encoding="utf-8").replace(
-        '    name: "Лоцман"', '    name: "Лоцман"\n    model: own-model'), encoding="utf-8")
+    cfg = yaml.safe_load(path.read_text(encoding="utf-8"))
+    cfg["assistants"]["sales"]["model"] = "own-model"
+    cfg["assistants"]["hr"].pop("model", None)
+    path.write_text(yaml.safe_dump(cfg, allow_unicode=True), encoding="utf-8")
     monkeypatch.setenv("LLM_MODEL", "env-model")
     assert get_passport("sales", project).model == "own-model"
     assert get_passport("hr", project).model == "env-model"

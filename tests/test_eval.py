@@ -63,3 +63,12 @@ def test_repeat_passes_only_if_all_runs_pass():
 def test_summary_counts_outcomes():
     s = summary([CaseOutcome("S01", "pd", [attempt(True), attempt(False)])])
     assert s["cases"] == 1 and s["cases_passed"] == 0 and s["criteria"] == 2 and not s["strict_ok"]
+
+
+def test_errored_attempt_not_mixed_with_judged_failures():
+    errored = CaseResult("S07", "out_of_kb", [], criteria=[Criterion("M1", "must", "честно говорит", passed=False)],
+                         error="лимит")
+    o = CaseOutcome("S07", "out_of_kb", [attempt(True), errored])
+    assert not o.passed and o.errors == 1
+    assert failed_texts(o) == "ошибка: лимит"  # критерий непроверенного прогона не считается провалом
+    assert summary([o])["errors"] == 1

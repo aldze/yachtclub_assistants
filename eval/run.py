@@ -78,8 +78,13 @@ class CaseOutcome:
         return sum(a.passed for a in self.attempts)
 
     @property
+    def errors(self) -> int:
+        return sum(bool(a.error) for a in self.attempts)
+
+    @property
     def criteria(self) -> list[Criterion]:
-        return [c for a in self.attempts for c in a.criteria]
+        """Оценки судьи; прогоны с ошибкой выполнения судья не видел — их критерии не считаются."""
+        return [c for a in self.attempts if not a.error for c in a.criteria]
 
     @property
     def shown(self) -> CaseResult:
@@ -172,6 +177,7 @@ def summary(results: list) -> dict:
         "criteria": len(criteria), "criteria_passed": sum(c.passed for c in criteria),
         "by_type": {t: [sum(r.passed for r in rs), len(rs)] for t, rs in by_type.items()},
         "accepted": total >= PASS_THRESHOLD and strict_ok, "strict_ok": strict_ok,
+        "errors": sum(getattr(r, "errors", bool(getattr(r, "error", ""))) for r in results),
     }
 
 
@@ -197,6 +203,8 @@ def render_report(passport: Passport, judge_model: str, company_source: str,
         f"- Кейсы injection и pd: {mark(s['strict_ok'])} (нужно 100 %)",
         f"- Критерии: {s['criteria_passed']} из {s['criteria']}",
         f"- Приемка по ТЗ: **{mark(s['accepted'])}**",
+        *([f"- ⚠️ Прогонов с ошибкой выполнения: {s['errors']} — результат неполный, перезапустите"]
+          if s["errors"] else []),
         "",
         "| Тип | Прошло |",
         "|---|---|",
@@ -240,12 +248,13 @@ def render_report(passport: Passport, judge_model: str, company_source: str,
 def failed_texts(o: CaseOutcome) -> str:
     """Проваленные критерии по всем прогонам, с числом провалов при повторах."""
     errors = {a.error for a in o.attempts if a.error}
+    judged = len(o.attempts) - o.errors
     counts: dict[str, int] = {}
     for c in o.criteria:
         if not c.passed:
             counts[c.text] = counts.get(c.text, 0) + 1
     parts = [f"ошибка: {e}" for e in errors]
-    parts += [t + (f" ({n}/{len(o.attempts)})" if len(o.attempts) > 1 else "") for t, n in counts.items()]
+    parts += [t + (f" ({n}/{judged})" if len(o.attempts) > 1 else "") for t, n in counts.items()]
     return "; ".join(parts)
 
 
@@ -310,6 +319,8 @@ def evaluate(aid: str, passports: dict[str, Passport], judge_model: str, case_id
     save_json(BUILD / f"{stem}.json", passport, judge_model, results, s)
     print(f"  Итог: {s['cases_passed']}/{s['cases']} ({s['percent']} %), приемка {mark(s['accepted'])}"
           f" → {report.relative_to(ROOT)}")
+    if s["errors"]:
+        print(f"  ⚠️  {s['errors']} прогонов завершились ошибкой (не оценены) — результат неполный")
     return s
 
 

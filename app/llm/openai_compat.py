@@ -9,6 +9,7 @@ import openai
 from app.llm.base import LLMClient, LLMError, Reply, ToolCall
 
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
+DEFAULT_MAX_RETRIES = 5  # SDK повторяет 429/5xx с нарастающей паузой и учитывает retry-after
 
 
 class OpenAICompatClient(LLMClient):
@@ -21,7 +22,8 @@ class OpenAICompatClient(LLMClient):
             raise LLMError("Не задан OPENAI_API_KEY: пропишите ключ в файле .env (образец — .env.example)")
         self.base_url = base_url
         # Адрес передаем явно: иначе SDK сам читает OPENAI_BASE_URL и пустая строка из .env ломает запрос
-        self._client = openai.OpenAI(api_key=api_key, base_url=base_url or DEFAULT_BASE_URL)
+        retries = int(os.getenv("LLM_MAX_RETRIES") or DEFAULT_MAX_RETRIES)
+        self._client = openai.OpenAI(api_key=api_key, base_url=base_url or DEFAULT_BASE_URL, max_retries=retries)
 
     def chat(self, messages: list[dict], tools: list[dict] | None = None, json_mode: bool = False) -> Reply:
         params: dict = {"model": self.model, "messages": messages, "temperature": self.temperature}
@@ -38,8 +40,11 @@ class OpenAICompatClient(LLMClient):
             raise LLMError("Ключ OPENAI_API_KEY не принят провайдером — проверьте .env") from None
         except openai.NotFoundError:
             raise LLMError(f"Модель «{self.model}» не найдена у провайдера — проверьте LLM_MODEL") from None
-        except openai.RateLimitError:
-            raise LLMError("Превышен лимит запросов или закончился баланс у провайдера") from None
+        except openai.RateLimitError as e:
+            if getattr(e, "code", None) == "insufficient_quota":
+                raise LLMError("У провайдера закончился баланс — пополните счет") from None
+            raise LLMError("Превышен лимит запросов в минуту у провайдера — повторите позже "
+                           "или уменьшите --workers") from None
         except openai.APIConnectionError as e:
             cause = e.__cause__ or e.__context__
             detail = f" ({cause})" if cause else ""

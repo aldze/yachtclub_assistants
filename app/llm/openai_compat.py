@@ -41,7 +41,9 @@ class OpenAICompatClient(LLMClient):
         except openai.NotFoundError:
             raise LLMError(f"Модель «{self.model}» не найдена у провайдера — проверьте LLM_MODEL") from None
         except openai.RateLimitError as e:
-            if getattr(e, "code", None) == "insufficient_quota":
+            body = e.body if isinstance(e.body, dict) else {}
+            if "insufficient_quota" in (getattr(e, "code", None), body.get("type"), body.get("code")) \
+                    or body.get("code") == "credit_balance_exhausted":
                 raise LLMError("У провайдера закончился баланс — пополните счет") from None
             raise LLMError("Превышен лимит запросов в минуту у провайдера — повторите позже "
                            "или уменьшите --workers") from None

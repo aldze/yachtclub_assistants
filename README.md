@@ -8,6 +8,7 @@ CLAUDE.md                  контекст и правила для Claude Code
 docs/SPEC.md               ТЗ
 docs/START_PROMPTS.md      промпты для Claude Code по этапам
 docs/GIT_TUTORIAL.md       мини-учебник по git и GitHub на примере проекта
+docs/DEPLOY.md             публичный запуск на сервере: Docker, HTTPS, лимиты, мониторинг
 docs/IMPORT_NOCODE.md      импорт в Custom GPTs, Яндекс AI Studio, SMAIPL
 docs/document_template.md  шаблон Word-документа проекта
 prompts/                   системные промпты (sales, service, hr)
@@ -68,6 +69,26 @@ python -m eval.run --repeat 3              # каждый кейс 3 раза: �
 python -m eval.compare до.json после.json   # разница «до и после» правки промпта
 ```
 Отчеты — `build/eval_<ассистент>.md` (таблица кейсов, процент, провалы с объяснениями судьи) и `.json` для сравнения до и после правок. Приемка: не меньше 90 % кейсов и 100 % кейсов `injection` и `pd`. По умолчанию судья — `gpt-4.1-mini` (учебный режим): он строже и дает ложные провалы в части кейсов, см. CLAUDE.md. Для приемки перед продом — `--model gpt-4.1`.
+
+## База знаний: целиком или через поиск (RAG)
+По умолчанию вся база знаний ассистента лежит в промпте (`retrieval: stuffing` в `config/assistants.yaml`): это около 20 тыс. знаков. Режим `rag` (`app/rag.py`) работает иначе:
+- база режется на фрагменты по заголовкам `#`–`###`;
+- для фрагментов считаются эмбеддинги OpenAI с кешем в `data/rag_index.json`;
+- на каждую реплику в промпт попадают `top_k` ближайших фрагментов, около 4 тыс. знаков.
+
+```bash
+python -m app.channels.cli --assistant hr --rag    # печатает, какие фрагменты нашлись
+python -m eval.run --rag --repeat 3                # отчеты build/eval_<id>_rag.md
+python -m eval.compare build/eval_hr.json build/eval_hr_rag.json
+```
+Включить для всех: `RETRIEVAL=rag` в `.env`, для одного ассистента — `retrieval: rag` в его паспорте. Замер на текущей базе показал, что качество не выросло: 28 из 37 кейсов в обоих режимах. Поэтому по умолчанию остается вся база в промпте, а RAG нужен, когда база перестанет помещаться.
+
+## Публичный запуск
+```bash
+docker compose up -d --build                     # web + HTTPS (caddy); домен — DOMAIN в .env
+docker compose --profile telegram up -d          # + Telegram-бот
+```
+Пошагово — `docs/DEPLOY.md`: сервер, домен, лимиты запросов (`WEB_RATE_LIMIT`, `WEB_DAILY_LIMIT`), оповещения об ошибках в Telegram (`TG_ALERT_CHAT`), обновление и резервные копии.
 
 ## Учебная и реальная версии
 - Учебная: данные из `config/company.example.yaml` (вымышленная компания).

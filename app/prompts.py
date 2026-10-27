@@ -23,11 +23,12 @@ def render_prompt(passport: Passport, company: dict | None = None, root: Path = 
     return render(text, company, passport.prompt).strip()
 
 
-def render_knowledge(passport: Passport, company: dict | None = None, root: Path = ROOT) -> str:
-    """Блок <knowledge>: файлы базы знаний без front matter, у каждого — строка «Источник: <id>»."""
+def knowledge_sources(passport: Passport, company: dict | None = None,
+                      root: Path = ROOT) -> list[tuple[str, str, str]]:
+    """Файлы базы знаний паспорта: (путь, id источника, текст без front matter с подстановкой)."""
     if company is None:
         company, _ = load_company(root)
-    parts = []
+    sources = []
     for rel in passport.knowledge:
         path = root / rel
         try:
@@ -40,13 +41,22 @@ def render_knowledge(passport: Passport, company: dict | None = None, root: Path
                 f"{rel}: файл подключен к ассистенту {passport.id}, "
                 f"но в front matter assistants: {allowed}"
             )
-        source_id = meta.get("id") or path.stem
-        parts.append(f"Источник: {source_id}\n\n{render(body, company, rel).strip()}")
+        sources.append((rel, meta.get("id") or path.stem, render(body, company, rel).strip()))
+    return sources
+
+
+def render_knowledge(passport: Passport, company: dict | None = None, root: Path = ROOT) -> str:
+    """Блок <knowledge>: файлы базы знаний без front matter, у каждого — строка «Источник: <id>»."""
+    parts = [f"Источник: {source_id}\n\n{text}" for _, source_id, text in knowledge_sources(passport, company, root)]
     return "<knowledge>\n" + "\n\n---\n\n".join(parts) + "\n</knowledge>"
 
 
-def build_system_prompt(passport: Passport, company: dict | None = None, root: Path = ROOT) -> str:
-    """Полный системный промпт. Промпт длиннее PROMPT_LIMIT — ошибка."""
+def build_system_prompt(passport: Passport, company: dict | None = None, root: Path = ROOT,
+                        with_knowledge: bool = True) -> str:
+    """Полный системный промпт. Промпт длиннее PROMPT_LIMIT — ошибка.
+
+    with_knowledge=False — без блока <knowledge> (режим rag: фрагменты подставляет app/rag.py).
+    """
     if company is None:
         company, _ = load_company(root)
     prompt = render_prompt(passport, company, root)
@@ -54,7 +64,7 @@ def build_system_prompt(passport: Passport, company: dict | None = None, root: P
         raise ConfigError(
             f"{passport.prompt}: {len(prompt)} знаков после подстановки, лимит {PROMPT_LIMIT}"
         )
-    if not passport.knowledge:
+    if not passport.knowledge or not with_knowledge:
         return prompt
     return prompt + "\n\n" + render_knowledge(passport, company, root)
 

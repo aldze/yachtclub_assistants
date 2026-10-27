@@ -63,3 +63,28 @@ class OpenAICompatClient(LLMClient):
                 arguments = {"_raw": call.function.arguments}
             calls.append(ToolCall(id=call.id, name=call.function.name, arguments=arguments))
         return Reply(text=message.content or "", tool_calls=calls)
+
+
+class OpenAIEmbedder:
+    """Эмбеддинги для RAG (app/rag.py) через тот же ключ и адрес, что и чат."""
+
+    BATCH = 100  # фрагментов в одном запросе
+
+    def __init__(self, model: str, api_key: str | None = None, base_url: str | None = None):
+        self.model = model
+        api_key = api_key or os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise LLMError("Не задан OPENAI_API_KEY: пропишите ключ в файле .env (образец — .env.example)")
+        retries = int(os.getenv("LLM_MAX_RETRIES") or DEFAULT_MAX_RETRIES)
+        self._client = openai.OpenAI(api_key=api_key, base_url=base_url or os.getenv("OPENAI_BASE_URL") or DEFAULT_BASE_URL,
+                                     max_retries=retries)
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        vectors = []
+        try:
+            for i in range(0, len(texts), self.BATCH):
+                response = self._client.embeddings.create(model=self.model, input=texts[i:i + self.BATCH])
+                vectors.extend(item.embedding for item in sorted(response.data, key=lambda d: d.index))
+        except openai.APIError as e:
+            raise LLMError(f"Ошибка эмбеддингов ({self.model}): {e}") from None
+        return vectors

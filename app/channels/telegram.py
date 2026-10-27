@@ -128,7 +128,7 @@ async def run(token: str, sessions: Sessions, bot_id: str) -> None:
 
 def main() -> int:
     load_env()
-    setup_logging()
+    setup_logging(service="telegram")
     passports = load_passports()
     ap = argparse.ArgumentParser(description="Telegram-бот ассистентов")
     ap.add_argument("--assistant", choices=list(passports), help="бот одного ассистента; без флага — единое окно")

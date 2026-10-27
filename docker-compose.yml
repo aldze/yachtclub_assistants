@@ -1,0 +1,51 @@
+# Публичный запуск (этап 6): docker compose up -d --build — подробно в docs/DEPLOY.md.
+#   web      — API виджета и демо-страница;
+#   caddy    — HTTPS: сам получает сертификат Let's Encrypt для DOMAIN и проксирует на web;
+#   telegram — бот единого окна, включается профилем: docker compose --profile telegram up -d
+services:
+  web:
+    build: .
+    image: yachtclub-assistants
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      WEB_HOST: 0.0.0.0
+      WEB_PORT: "8080"
+      WEB_TRUST_PROXY: "1"            # IP посетителя — из заголовка, который ставит caddy
+      DB_PATH: /app/data/app.sqlite3
+    volumes:
+      - data:/app/data                # база и кеш эмбеддингов переживают пересборку образа
+    expose: ["8080"]                  # наружу порт не открыт — только через caddy
+
+  telegram:
+    build: .
+    image: yachtclub-assistants       # тот же образ, что у web (повторная сборка — из кеша)
+    profiles: [telegram]
+    command: ["python", "-m", "app.channels.telegram"]
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_PATH: /app/data/app.sqlite3
+    volumes:
+      - data:/app/data
+    healthcheck:
+      disable: true                   # у бота нет веб-сервера, /health не к кому спрашивать
+
+  caddy:
+    image: caddy:2.8
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data              # сертификаты: без тома Let's Encrypt быстро упрется в лимит выдачи
+      - caddy_config:/config
+    depends_on:
+      web:
+        condition: service_healthy
+
+volumes:
+  data:
+  caddy_data:
+  caddy_config:

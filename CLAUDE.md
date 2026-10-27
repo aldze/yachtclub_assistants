@@ -13,7 +13,7 @@
 Это учебный проект курса «Промпт-инжиниринг» с прицелом на реальный запуск. Полное ТЗ — `docs/SPEC.md`.
 
 ## Текущее состояние
-Готов контент: промпты, база знаний, тест-кейсы, конфиги, сборщик документа. **Этапы 1–4 готовы:** ядро (`app/config.py`, `app/prompts.py`, `app/chat.py`), адаптер OpenAI, CLI-чат; `create_handoff` (`app/tools/handoff.py`), SQLite и маскирование ПДн (`app/store.py`), тесты `pytest`; оценка `python -m eval.run` (судья — `eval/judge.md`, отчеты в `build/eval_*.md`). Этап 4: роутер (`app/router.py`, `prompts/router.md`), сессии в SQLite (`app/sessions.py`), веб-виджет (`app/channels/web.py` + `web_static/`), Telegram (`app/channels/telegram.py`), маскирование логов (`app/logs.py`); точность роутера — `python -m eval.router`. Дальше — этап 5 (RAG по необходимости).
+Готов контент: промпты, база знаний, тест-кейсы, конфиги, сборщик документа. **Этапы 1–4 готовы:** ядро (`app/config.py`, `app/prompts.py`, `app/chat.py`), адаптер OpenAI, CLI-чат; `create_handoff` (`app/tools/handoff.py`), SQLite и маскирование ПДн (`app/store.py`), тесты `pytest`; оценка `python -m eval.run` (судья — `eval/judge.md`, отчеты в `build/eval_*.md`). Этап 4: роутер (`app/router.py`, `prompts/router.md`), сессии в SQLite (`app/sessions.py`), веб-виджет (`app/channels/web.py` + `web_static/`), Telegram (`app/channels/telegram.py`), маскирование логов (`app/logs.py`); точность роутера — `python -m eval.router`. Этап 5: RAG (`app/rag.py`) — режим `retrieval: rag` в паспорте или `RETRIEVAL=rag`; по умолчанию `stuffing`, потому что замер ×3 не показал выигрыша (28/37 кейсов в обоих режимах; у rag свои провалы — H01, H05: не нашлись нужные фрагменты). Этап 6: Docker (`Dockerfile`, `docker-compose.yml` с Caddy для HTTPS), лимиты публичного виджета (`app/limits.py`), `/health`, оповещения об ошибках в Telegram (`app/logs.py`, `TG_ALERT_CHAT`); инструкция — `docs/DEPLOY.md`. Публичная версия работает на легенде: `config/*.local.*` в образ не попадают.
 
 **Оценка в учебном режиме.** Ассистенты и судья — `gpt-4.1-mini`. Судья mini строже `gpt-4.1` (совпадение 97 % оценок) и дает ложные провалы: S06 («продолжает собирать контакты» — на фразу «если передумаете, помогу»), V03 («начинает со сбора данных» — на вопрос после мер безопасности), V09 (данные о лодке принимает за контакты). Поэтому формальная приемка (≥ 90 %, injection/pd — 100 %) с судьей mini не достигается; провалы в этих кейсах сначала проверять глазами. Последний замер (`--repeat 3`): sales 77 %, service 58 %, hr 92 %. Перед продом — модели сильнее и приемочный прогон `python -m eval.run --repeat 3 --model gpt-4.1`. Инструменты интервью (`get_interview_slots`, `book_interview`) еще не реализованы — пропускаются. Окружение: `.venv` на Python 3.12.
 
@@ -48,7 +48,10 @@ app/
   chat.py          # диалог: общая история, передача между ассистентами, цикл инструментов
   router.py        # единое окно: какой ассистент отвечает на реплику (prompts/router.md)
   sessions.py      # сессии каналов: start / message / reset, история в SQLite
-  logs.py          # логи с маскированием телефонов и e-mail
+  logs.py          # логи с маскированием телефонов и e-mail; ошибки — в Telegram (TG_ALERT_CHAT)
+  rag.py           # этап 5: чанки по заголовкам, эмбеддинги с кешем, top-k (retrieval: rag)
+  limits.py        # лимиты публичного виджета: на IP и на сутки
+  notify.py        # отправка в Telegram Bot API
   channels/
     cli.py         # python -m app.channels.cli --assistant sales | --window
     web.py         # aiohttp: API виджета + демо-страница; web_static/ — widget.js, widget.css
@@ -57,10 +60,11 @@ eval/
   run.py           # прогон tests/cases/*.yaml + LLM-судья -> отчёт build/eval_<assistant>.md
 tools/
   build_docx.py    # рендер плейсхолдеров, проверки, сборка Word-документа
+Dockerfile, docker-compose.yml, deploy/Caddyfile   # этап 6: публичный запуск (docs/DEPLOY.md)
 ```
 
 Ключевые решения:
-1. **База знаний на старте — целиком в контексте** (context stuffing): промпт + база знаний каждого ассистента — около 20 тыс. знаков (менее 10 тыс. токенов), RAG не нужен. Векторный поиск (чанки по заголовкам `###`, урок PEr03) — этап 5, при росте базы.
+1. **База знаний — целиком в контексте** (context stuffing): промпт + база знаний каждого ассистента — около 20 тыс. знаков (менее 10 тыс. токенов). RAG (чанки по заголовкам, урок PEr03) реализован на этапе 5 и включается настройкой `retrieval: rag`; переключаться стоит, когда база вырастет, и только после замера `eval --rag --repeat 3`.
 2. **Карточка передачи работает в двух режимах.** Если модели доступен инструмент `create_handoff`, она вызывает его. Если нет (no-code), выводит текстовый блок «КАРТОЧКА ПЕРЕДАЧИ». Промпты уже написаны под оба режима.
 3. **Провайдер переключается через `.env`.** Для реального запуска с ПДн российских клиентов предпочтительны YandexGPT или GigaChat (152-ФЗ, локализация данных).
 4. **Без согласия на обработку ПДн контакты не сохраняются:** `pd_consent=false` — блок `contact` отбрасывается на уровне кода, а не только промпта.
@@ -80,6 +84,8 @@ python -m app.channels.cli --window
 python -m app.channels.web
 python -m app.channels.telegram            # единое окно; --assistant hr — один ассистент
 python -m eval.router --repeat 3
+python -m eval.run --rag --repeat 3        # то же с RAG — сравнить через eval.compare
+docker compose up -d --build               # публичный запуск: web + caddy (HTTPS для DOMAIN)
 pytest
 ```
 

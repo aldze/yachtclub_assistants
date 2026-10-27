@@ -50,10 +50,13 @@ class Store:
         if str(self.path) != ":memory:":
             self.path.parent.mkdir(parents=True, exist_ok=True)
         # Одно соединение на процесс; веб и Telegram обращаются из разных потоков — под замком
-        self._db = sqlite3.connect(str(self.path), check_same_thread=False)
+        # timeout: веб и Telegram в Docker — два процесса с одной базой, запись ждет освобождения
+        self._db = sqlite3.connect(str(self.path), check_same_thread=False, timeout=10)
         self._db.row_factory = sqlite3.Row
         self._lock = threading.RLock()
         with self._lock:
+            if str(self.path) != ":memory:":
+                self._db.execute("PRAGMA journal_mode=WAL")  # чтение не блокирует запись
             self._db.executescript(SCHEMA)
 
     def save_card(self, card: dict) -> None:

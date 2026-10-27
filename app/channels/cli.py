@@ -2,6 +2,7 @@
 
     python -m app.channels.cli --assistant sales
     python -m app.channels.cli --window      # единое окно: ассистента выбирает роутер
+    python -m app.channels.cli --rag         # база знаний через поиск (этап 5); печатает найденные фрагменты
 
 Команды: /reset — новый диалог, /switch <id> — сменить ассистента (история сохраняется),
 /prompt — размер системного промпта, /cards — карточки передачи этого диалога, /help, /exit.
@@ -9,6 +10,7 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import sys
 
@@ -24,7 +26,7 @@ HELP = ("Команды: /reset — новый диалог, /switch <id> — с
 def print_intro(conv: Conversation, starters: list[str] | None = None) -> None:
     p = conv.passport
     starters = starters if starters is not None else p.conversation_starters
-    print(f"\n=== {p.name} — {p.title} ({p.id}, {p.provider}/{p.model}) ===")
+    print(f"\n=== {p.name} — {p.title} ({p.id}, {p.provider}/{p.model}, база знаний: {p.retrieval}) ===")
     greeting = conv.greet()
     if greeting:
         print(f"{p.name}: {greeting}")
@@ -67,7 +69,10 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Чат с ассистентом в терминале")
     ap.add_argument("--assistant", default="sales", choices=list(passports), help="ассистент (по умолчанию sales)")
     ap.add_argument("--window", action="store_true", help="единое окно: ассистента выбирает роутер")
+    ap.add_argument("--rag", action="store_true", help="база знаний через поиск фрагментов, а не целиком")
     args = ap.parse_args()
+    if args.rag:
+        passports = {aid: dataclasses.replace(p, retrieval="rag") for aid, p in passports.items()}
 
     try:
         start = window_config().get("default_assistant", "sales") if args.window else args.assistant
@@ -102,6 +107,8 @@ def main() -> int:
         except LLMError as e:
             print(f"[ошибка] {e}")
             continue
+        if conv.rag:
+            print("[rag: " + " | ".join(conv.last_sources) + "]")
         print(f"\n{conv.passport.name}: {reply.text}")
         if len(conv.cards) > cards_before:
             print(f"[создана карточка передачи №{conv.cards[-1]['card_id']} — /cards покажет ее целиком]")

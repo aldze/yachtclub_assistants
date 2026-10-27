@@ -1,4 +1,5 @@
 """Тесты app/config.py: подстановка плейсхолдеров, выбор файла компании, паспорта."""
+import os
 import shutil
 
 import yaml
@@ -106,3 +107,11 @@ def test_passport_value_beats_env(project, monkeypatch):
 def test_unknown_assistant():
     with pytest.raises(ConfigError, match="Доступны"):
         get_passport("captain")
+
+
+def test_env_comment_as_value_is_empty(monkeypatch, tmp_path):
+    """Так Docker compose передает «OPENAI_BASE_URL=   # пусто» из .env."""
+    from app.config import load_env
+    monkeypatch.setenv("OPENAI_BASE_URL", "# пусто для OpenAI")
+    load_env(tmp_path)
+    assert os.environ["OPENAI_BASE_URL"] == ""

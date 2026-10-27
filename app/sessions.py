@@ -128,7 +128,8 @@ class Sessions:
             try:
                 reply = conv.send(text)
             except LLMError as e:
-                log.error("Сессия %s: ошибка LLM: %s", key, e)
+                # без ключа сессии: одинаковые сбои (например, баланс) склеиваются в одно оповещение
+                log.error("Ошибка LLM у ассистента %s: %s", conv.active, e)
                 return Answer(self.error_text, self._info(conv.active), error=True)
             self._save(key, conv)
             # текст реплик в лог не пишем: имена регуляркой не замаскировать

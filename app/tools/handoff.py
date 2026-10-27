@@ -9,8 +9,6 @@ import copy
 import json
 import logging
 import os
-import urllib.error
-import urllib.request
 import uuid
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -18,6 +16,7 @@ from functools import lru_cache
 import jsonschema
 
 from app.config import ROOT, load_assistants_config
+from app.notify import NotifyError, send_telegram
 from app.store import Store, mask_card
 from app.tools.base import Tool, ToolContext
 
@@ -140,20 +139,12 @@ def notify_department(card: dict) -> str:
         print("\n" + "─" * 60 + "\n" + text + "\n" + "─" * 60)
         return "console"
     try:
-        body = json.dumps({"chat_id": chat_id, "text": text}).encode()
-        request = urllib.request.Request(
-            f"https://api.telegram.org/bot{token}/sendMessage", data=body,
-            headers={"Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(request, timeout=10) as response:
-            response.read()
+        send_telegram(token, chat_id, text)
         return "sent"
-    except (urllib.error.URLError, TimeoutError) as e:
-        # Токен не должен попасть в лог вместе с адресом запроса
-        reason = str(getattr(e, "reason", e)).replace(token, "***")
-        log.warning("Карточка %s не отправлена в Telegram: %s", card["card_id"], reason)
+    except NotifyError as e:
+        log.warning("Карточка %s не отправлена в Telegram: %s", card["card_id"], e)
         print("\n" + text)
-        return f"error: {reason}"
+        return f"error: {e}"
 
 
 # ---------- инструмент ----------

@@ -5,6 +5,7 @@
     python -m eval.run --assistant sales --case S03
     python -m eval.run --model gpt-4.1       # модель судьи (по умолчанию JUDGE_MODEL или gpt-4.1-mini)
     python -m eval.run --repeat 3            # каждый кейс 3 раза; засчитывается, только если прошел все
+    python -m eval.run --rag                 # база знаний через поиск (этап 5) — сравнить с eval.compare
 
 Отчет: build/eval_<assistant>.md (+ .json для сравнения «до и после»).
 Карточки передачи во время прогона пишутся во временную базу в памяти и никуда не отправляются.
@@ -26,6 +27,7 @@ from app.chat import Conversation
 from app.config import ROOT, ConfigError, Passport, load_company, load_env, load_passports, read_yaml
 from app.llm import LLMError, get_client
 from app.prompts import render_knowledge
+from app.rag import shared_retriever
 from app.store import Store, mask_text
 
 CASES_DIR = ROOT / "tests" / "cases"
@@ -200,6 +202,7 @@ def render_report(passport: Passport, judge_model: str, company_source: str,
         "",
         f"- Дата: {datetime.now():%Y-%m-%d %H:%M}",
         f"- Ассистент: {passport.provider}/{passport.model}, температура {passport.temperature}",
+        f"- База знаний: {'rag, top_k ' + str(passport.top_k) if passport.retrieval == 'rag' else 'целиком в промпте'}",
         f"- Судья: {judge_model}, температура 0",
         f"- Данные компании: config/{company_source}",
         f"- Прогонов на кейс: {repeat} (кейс пройден, только если пройдены все)",
@@ -307,7 +310,9 @@ def evaluate(aid: str, passports: dict[str, Passport], judge_model: str, case_id
     knowledge = render_knowledge(passport, company)
     judge_client = get_client(dataclasses.replace(passport, model=judge_model, temperature=0.0, max_tokens=1500))
 
-    print(f"\n{passport.name} ({aid}): {len(cases)} кейсов × {repeat}, судья {judge_model}")
+    if passport.retrieval == "rag":
+        shared_retriever().build(passport)  # эмбеддинги базы — заранее, а не в параллельных потоках
+    print(f"\n{passport.name} ({aid}): {len(cases)} кейсов × {repeat}, судья {judge_model}, база: {passport.retrieval}")
     jobs = [c for c in cases for _ in range(repeat)]
     with ThreadPoolExecutor(max_workers=workers) as pool:
         attempts = list(pool.map(lambda c: run_case(c, aid, passports, judge_client, knowledge), jobs))
@@ -321,7 +326,7 @@ def evaluate(aid: str, passports: dict[str, Passport], judge_model: str, case_id
 
     s = summary(results)
     BUILD.mkdir(exist_ok=True)
-    stem = f"eval_{aid}" + (f"_{case_id}" if case_id else "")
+    stem = f"eval_{aid}" + ("_rag" if passport.retrieval == "rag" else "") + (f"_{case_id}" if case_id else "")
     report = BUILD / f"{stem}.md"
     report.write_text(render_report(passport, judge_model, company_source, results, s, repeat), encoding="utf-8")
     save_json(BUILD / f"{stem}.json", passport, judge_model, results, s)
@@ -341,7 +346,10 @@ def main() -> int:
     ap.add_argument("--model", default=os.getenv("JUDGE_MODEL") or DEFAULT_JUDGE_MODEL, help="модель судьи")
     ap.add_argument("--repeat", type=int, default=1, help="прогонов на кейс; пройден, только если прошел все")
     ap.add_argument("--workers", type=int, default=4, help="сколько прогонов выполнять параллельно")
+    ap.add_argument("--rag", action="store_true", help="база знаний через поиск (отчет build/eval_<id>_rag.md)")
     args = ap.parse_args()
+    if args.rag:
+        passports = {aid: dataclasses.replace(p, retrieval="rag") for aid, p in passports.items()}
 
     ids = list(passports) if args.assistant == "all" else [args.assistant]
     if args.case and len(ids) > 1:

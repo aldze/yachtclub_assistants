@@ -163,6 +163,10 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body)
     }).then(function (r) {
+      if (r.status === 429) {
+        // лимит сообщений: сервер присылает текст для посетителя
+        return r.json().then(function (d) { var e = new Error("limit"); e.text = d.text; throw e; });
+      }
       if (!r.ok) throw new Error("HTTP " + r.status);
       return r.json();
     });
@@ -183,7 +187,7 @@
     typing(true);
     post("/api/start", { session: session })
       .then(function (answer) { typing(false); show(answer); })
-      .catch(function () { typing(false); addNote("Чат временно недоступен. Попробуйте позже."); })
+      .catch(function (e) { typing(false); addNote(e.text || "Чат временно недоступен. Попробуйте позже."); })
       .then(function () { busy = false; update(); });
   }
 
@@ -197,7 +201,7 @@
     typing(true);
     post("/api/message", { session: session, text: text })
       .then(function (answer) { typing(false); show(answer); })
-      .catch(function () { typing(false); addNote("Сообщение не отправлено — проверьте соединение и попробуйте еще раз."); })
+      .catch(function (e) { typing(false); addNote(e.text || "Сообщение не отправлено — проверьте соединение и попробуйте еще раз."); })
       .then(function () { busy = false; update(); input.focus(); });
   }
 

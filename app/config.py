@@ -22,8 +22,15 @@ class ConfigError(Exception):
 
 
 def load_env(root: Path = ROOT) -> None:
-    """Загружает .env, не перетирая уже заданные переменные окружения."""
+    """Загружает .env, не перетирая уже заданные переменные окружения.
+
+    Docker compose читает «KEY=   # комментарий» как значение «# комментарий», а python-dotenv —
+    как пустое. Чтобы .env работал одинаково в обоих случаях, такие значения считаем пустыми.
+    """
     load_dotenv(root / ".env", override=False)
+    for key, value in os.environ.items():
+        if value.lstrip().startswith("#"):
+            os.environ[key] = ""
 
 
 def read_yaml(path: Path) -> dict:
@@ -81,6 +88,9 @@ def strip_front_matter(text: str) -> str:
 
 # ---------- паспорта ассистентов ----------
 
+RETRIEVAL_MODES = ("stuffing", "rag")
+
+
 @dataclass
 class Passport:
     id: str
@@ -94,6 +104,8 @@ class Passport:
     knowledge: list[str] = field(default_factory=list)
     tools: list[str] = field(default_factory=list)
     conversation_starters: list[str] = field(default_factory=list)
+    retrieval: str = "stuffing"   # stuffing — вся база в промпте; rag — только найденные фрагменты (app/rag.py)
+    top_k: int = 8                # сколько фрагментов базы знаний подставлять в режиме rag
 
 
 def load_assistants_config(root: Path = ROOT) -> dict:
@@ -103,12 +115,12 @@ def load_assistants_config(root: Path = ROOT) -> dict:
 def load_passports(root: Path = ROOT) -> dict[str, Passport]:
     """Паспорта всех ассистентов.
 
-    Порядок приоритета для provider и model: defaults → .env (LLM_PROVIDER, LLM_MODEL)
+    Порядок приоритета для provider, model и retrieval: defaults → .env (LLM_PROVIDER, LLM_MODEL, RETRIEVAL)
     → значение в самом паспорте ассистента. Остальные поля: defaults → паспорт.
     """
     cfg = load_assistants_config(root)
     defaults = dict(cfg.get("defaults", {}))
-    for key, env in (("provider", "LLM_PROVIDER"), ("model", "LLM_MODEL")):
+    for key, env in (("provider", "LLM_PROVIDER"), ("model", "LLM_MODEL"), ("retrieval", "RETRIEVAL")):
         if os.getenv(env):
             defaults[key] = os.environ[env]
 
@@ -128,9 +140,13 @@ def load_passports(root: Path = ROOT) -> dict[str, Passport]:
                 knowledge=list(merged.get("knowledge", [])),
                 tools=list(merged.get("tools", [])),
                 conversation_starters=list(merged.get("conversation_starters", [])),
+                retrieval=str(merged.get("retrieval", "stuffing")),
+                top_k=int(merged.get("top_k", 8)),
             )
         except KeyError as e:
             raise ConfigError(f"config/assistants.yaml: у ассистента {aid} нет поля {e.args[0]}") from None
+        if passports[aid].retrieval not in RETRIEVAL_MODES:
+            raise ConfigError(f"{aid}: retrieval «{passports[aid].retrieval}», варианты: {', '.join(RETRIEVAL_MODES)}")
     return passports
 
 

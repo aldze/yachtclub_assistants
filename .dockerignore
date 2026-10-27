@@ -1,0 +1,17 @@
+# Что не копируется в Docker-образ
+.env
+.env.*
+!.env.example
+config/*.local.*
+data/
+build/
+.venv/
+.git/
+.pytest_cache/
+.playwright-mcp/
+**/__pycache__/
+*.docx
+tests/
+eval/
+tools/
+docs/

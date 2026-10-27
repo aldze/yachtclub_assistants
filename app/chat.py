@@ -13,6 +13,7 @@ from typing import Callable
 from app.config import Passport, load_company, load_passports
 from app.llm import LLMClient, Reply, ToolCall, get_client
 from app.prompts import build_system_prompt, extract_greeting
+from app.rag import Retriever, rag_query, shared_retriever
 from app.store import Store
 from app.tools import ToolContext, tools_for
 
@@ -25,13 +26,16 @@ log = logging.getLogger(__name__)
 class Conversation:
     def __init__(self, assistant_id: str, passports: dict[str, Passport] | None = None,
                  client_factory: ClientFactory = get_client, channel: str = "cli",
-                 store: Store | None = None, notifier: Callable[[dict], str] | None = None):
+                 store: Store | None = None, notifier: Callable[[dict], str] | None = None,
+                 retriever: Retriever | None = None):
         self.passports = passports or load_passports()
         self.company, _ = load_company()
         self.channel = channel
         self._client_factory = client_factory
         self._store = store
         self._notifier = notifier
+        self._retriever = retriever
+        self.last_sources: list[str] = []  # режим rag: какие фрагменты базы видела модель в последнем ответе
         self._clients: dict[str, LLMClient] = {}
         self._prompts: dict[str, str] = {}
         self.history: list[dict] = []
@@ -55,7 +59,9 @@ class Conversation:
         if assistant_id not in self.passports:
             raise KeyError(f"Неизвестный ассистент «{assistant_id}». Доступны: {', '.join(self.passports)}")
         if assistant_id not in self._prompts:
-            self._prompts[assistant_id] = build_system_prompt(self.passports[assistant_id], self.company)
+            p = self.passports[assistant_id]
+            # в режиме rag база знаний подставляется на каждую реплику — в кеше только промпт
+            self._prompts[assistant_id] = build_system_prompt(p, self.company, with_knowledge=p.retrieval != "rag")
         self.active = assistant_id
 
     def handover(self, assistant_id: str, reason: str = "") -> None:
@@ -97,8 +103,24 @@ class Conversation:
             self.history.append({"role": "assistant", "content": greeting})
         return greeting
 
-    def system_prompt(self) -> str:
-        return self._prompts[self.active]
+    @property
+    def rag(self) -> bool:
+        return self.passport.retrieval == "rag" and bool(self.passport.knowledge)
+
+    @property
+    def retriever(self) -> Retriever:
+        if self._retriever is None:
+            self._retriever = shared_retriever()
+        return self._retriever
+
+    def system_prompt(self, query: str | None = None) -> str:
+        """Системный промпт активного ассистента. В режиме rag — с фрагментами базы под запрос."""
+        prompt = self._prompts[self.active]
+        if not self.rag:
+            return prompt
+        block, found = self.retriever.knowledge_block(self.passport, query if query is not None else rag_query(self.history))
+        self.last_sources = [f"{c.source}: {c.title}" for c in found]
+        return prompt + "\n\n" + block
 
     def _client(self) -> LLMClient:
         if self.active not in self._clients:
@@ -137,8 +159,9 @@ class Conversation:
         self.history.append({"role": "user", "content": text})
         specs = [t.spec() for t in tools_for(self.passport)] or None
         try:
+            system = self.system_prompt()  # rag: поиск один раз на реплику, а не на каждый раунд инструментов
             for round_no in range(MAX_TOOL_ROUNDS + 1):
-                messages = [{"role": "system", "content": self.system_prompt()}, *self.history]
+                messages = [{"role": "system", "content": system}, *self.history]
                 # в последнем раунде инструменты не даем — модель обязана ответить текстом
                 reply = self._client().chat(messages, specs if round_no < MAX_TOOL_ROUNDS else None)
                 if not reply.tool_calls:

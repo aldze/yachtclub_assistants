@@ -1,0 +1,15 @@
+# HTTPS-прокси перед веб-виджетом. Сертификат для {$DOMAIN} Caddy получает и продлевает сам.
+# Для DOMAIN=localhost — локальный самоподписанный сертификат (проверка на своем компьютере).
+{$DOMAIN} {
+	encode gzip
+	request_body {
+		max_size 64KB
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+	reverse_proxy web:8080
+}

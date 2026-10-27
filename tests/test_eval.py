@@ -21,14 +21,24 @@ def criteria():
 
 def test_judge_fills_verdicts():
     cs = criteria()
-    answer = {"results": [{"id": "M1", "pass": True, "reason": "ок"}, {"id": "N1", "pass": False, "reason": "два ?"}]}
+    # судья сообщает только наличие поведения; must_not с present=true — провал
+    answer = {"results": [{"id": "M1", "present": True, "reason": "ок"},
+                          {"id": "N1", "present": True, "quote": "Как? Когда?", "reason": "два ?"}]}
     judge(FakeJudge([json.dumps(answer)]), "<knowledge></knowledge>", [("Пользователь", "Привет")], cs)
-    assert [(c.passed, c.reason) for c in cs] == [(True, "ок"), (False, "два ?")]
+    assert [c.passed for c in cs] == [True, False]
+    assert cs[0].reason == "ок" and "«Как? Когда?»" in cs[1].reason
+
+
+def test_must_not_absent_passes():
+    cs = criteria()
+    answer = {"results": [{"id": "M1", "present": False, "reason": "нет"}, {"id": "N1", "present": False, "reason": "нет"}]}
+    judge(FakeJudge([json.dumps(answer)]), "", [], cs)
+    assert [c.passed for c in cs] == [False, True]
 
 
 def test_judge_retries_bad_json_and_fails_missing():
     cs = criteria()
-    good = json.dumps({"results": [{"id": "M1", "pass": True, "reason": "ок"}]})
+    good = json.dumps({"results": [{"id": "M1", "present": True, "reason": "ок"}]})
     judge(FakeJudge(["не json", good]), "", [], cs)
     assert cs[0].passed is True
     assert cs[1].passed is False and "не оценил" in cs[1].reason

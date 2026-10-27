@@ -1,7 +1,7 @@
 """Диалог с ассистентами: общая история и активный ассистент, которого можно сменить.
 
 Под «единое окно» (CLAUDE.md, решение 5): посетитель ведет один разговор,
-а отвечает тот ассистент, который сейчас активен. Роутер появится на этапе 4.
+а отвечает тот ассистент, который сейчас активен. Кого сделать активным, решает app/router.py.
 """
 from __future__ import annotations
 
@@ -57,6 +57,30 @@ class Conversation:
         if assistant_id not in self._prompts:
             self._prompts[assistant_id] = build_system_prompt(self.passports[assistant_id], self.company)
         self.active = assistant_id
+
+    def handover(self, assistant_id: str, reason: str = "") -> None:
+        """Передает разговор другому ассистенту с пометкой в истории (видит только модель)."""
+        previous = self.passport
+        self.switch(assistant_id)
+        if previous.id == assistant_id:
+            return
+        p = self.passport
+        note = (f"Разговор передан от ассистента {previous.name} ({previous.title}) тебе — {p.name} ({p.title}). "
+                f"Реплики «assistant» выше писал {previous.name}. Коротко представься и продолжай по своему профилю.")
+        if reason:
+            note += f" Причина передачи: {reason}"
+        self.history.append({"role": "system", "content": note})
+
+    # ---------- сохранение между запросами ----------
+
+    def state(self) -> dict:
+        return {"conversation_id": self.conversation_id, "active": self.active, "history": self.history}
+
+    def restore(self, state: dict) -> None:
+        self.switch(state["active"])
+        self.conversation_id = state["conversation_id"]
+        self.history = list(state["history"])
+        self.cards = self.store.cards_for_conversation(self.conversation_id) if self._store else []
 
     def reset(self) -> None:
         self.history.clear()

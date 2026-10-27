@@ -39,6 +39,27 @@ pytest                               # тесты без обращения к L
 
 Карточки передачи сохраняются в `data/app.sqlite3`. Если в `.env` заданы `TG_CHAT_<ОТДЕЛ>` и токен бота (`TG_NOTIFY_TOKEN`), карточка уходит в Telegram-чат отдела, иначе печатается в консоль.
 
+## Единое окно: сайт и Telegram
+Посетитель пишет в одно окно, а отвечает нужный ассистент: роутер (`prompts/router.md`) на каждую реплику решает, оставить разговор у текущего или передать Лоцману, Боцману или Штурману. История общая и хранится в `data/app.sqlite3`.
+
+```bash
+python -m app.channels.cli --window        # единое окно в терминале
+python -m app.channels.web                 # http://127.0.0.1:8080 — демо-страница с чат-виджетом
+python -m app.channels.telegram            # Telegram-бот единого окна (TG_TOKEN_WINDOW в .env)
+python -m app.channels.telegram --assistant hr   # бот одного ассистента (TG_TOKEN_HR)
+python -m eval.router --repeat 3           # точность роутера на tests/cases/router.yaml
+```
+
+**Виджет на сайт** — одна строка перед `</body>`:
+```html
+<script src="https://<сервер>/static/widget.js" data-api="https://<сервер>" defer></script>
+```
+Домен сайта добавьте в `WEB_ALLOWED_ORIGINS`. Кнопки-подсказки, ассистент по умолчанию и текст при сбое — в `config/assistants.yaml` → `window`.
+
+**Telegram:** создайте бота у @BotFather (`/newbot`), впишите токен в `.env` и запустите. Команды: `/start`, `/reset`. Файлы и фото бот не сохраняет.
+
+Логи маскируют телефоны и e-mail; текст реплик посетителей в лог не пишется.
+
 ## Оценка качества
 ```bash
 python -m eval.run                          # все ассистенты: кейсы из tests/cases/ + LLM-судья

@@ -29,6 +29,9 @@ from app.config import PLACEHOLDER, ConfigError, load_company, render, strip_fro
 from app.prompts import PROMPT_LIMIT  # noqa: E402
 
 BUILD = ROOT / "build"
+# Плейсхолдеры, которые заполняет код, а не company.yaml: {{КЛЮЧ}} — пример в документации,
+# {{ASSISTANTS}} — список ассистентов в prompts/router.md
+CODE_PLACEHOLDERS = {"КЛЮЧ", "ASSISTANTS"}
 DOCX_NAME = "Нейроассистенты_яхты.docx"
 TYPE_RU = {
     "typical": "Типовой", "out_of_kb": "Вне базы", "off_topic": "Не по теме",
@@ -68,7 +71,7 @@ def check(company: dict) -> list[str]:
     for f in content_files():
         if f.suffix == ".md" or f.suffix == ".json":
             for key in set(PLACEHOLDER.findall(f.read_text(encoding="utf-8"))):
-                if key not in company and key != "КЛЮЧ":
+                if key not in company and key not in CODE_PLACEHOLDERS:
                     errors.append(f"{f.relative_to(ROOT)}: неизвестный плейсхолдер {{{{{key}}}}}")
 
     forbidden_file = ROOT / "config" / "forbidden.local.txt"

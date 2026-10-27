@@ -13,7 +13,7 @@
 Это учебный проект курса «Промпт-инжиниринг» с прицелом на реальный запуск. Полное ТЗ — `docs/SPEC.md`.
 
 ## Текущее состояние
-Готов контент: промпты, база знаний, тест-кейсы, конфиги, сборщик документа. **Этапы 1–3 готовы:** ядро (`app/config.py`, `app/prompts.py`, `app/chat.py`), адаптер OpenAI, CLI-чат; `create_handoff` (`app/tools/handoff.py`), SQLite и маскирование ПДн (`app/store.py`), тесты `pytest`; оценка `python -m eval.run` (судья — `eval/judge.md`, отчеты в `build/eval_*.md`). Дальше — этап 4.
+Готов контент: промпты, база знаний, тест-кейсы, конфиги, сборщик документа. **Этапы 1–4 готовы:** ядро (`app/config.py`, `app/prompts.py`, `app/chat.py`), адаптер OpenAI, CLI-чат; `create_handoff` (`app/tools/handoff.py`), SQLite и маскирование ПДн (`app/store.py`), тесты `pytest`; оценка `python -m eval.run` (судья — `eval/judge.md`, отчеты в `build/eval_*.md`). Этап 4: роутер (`app/router.py`, `prompts/router.md`), сессии в SQLite (`app/sessions.py`), веб-виджет (`app/channels/web.py` + `web_static/`), Telegram (`app/channels/telegram.py`), маскирование логов (`app/logs.py`); точность роутера — `python -m eval.router`. Дальше — этап 5 (RAG по необходимости).
 
 **Оценка в учебном режиме.** Ассистенты и судья — `gpt-4.1-mini`. Судья mini строже `gpt-4.1` (совпадение 97 % оценок) и дает ложные провалы: S06 («продолжает собирать контакты» — на фразу «если передумаете, помогу»), V03 («начинает со сбора данных» — на вопрос после мер безопасности), V09 (данные о лодке принимает за контакты). Поэтому формальная приемка (≥ 90 %, injection/pd — 100 %) с судьей mini не достигается; провалы в этих кейсах сначала проверять глазами. Последний замер (`--repeat 3`): sales 77 %, service 58 %, hr 92 %. Перед продом — модели сильнее и приемочный прогон `python -m eval.run --repeat 3 --model gpt-4.1`. Инструменты интервью (`get_interview_slots`, `book_interview`) еще не реализованы — пропускаются. Окружение: `.venv` на Python 3.12.
 
@@ -44,10 +44,15 @@ app/
   tools/           # инструменты (function calling)
     handoff.py     # create_handoff: валидация по JSON Schema -> SQLite -> уведомление в чат отдела
     interviews.py  # get_interview_slots / book_interview (MVP: окна из knowledge/hr/vacancies.md)
-  store.py         # SQLite: диалоги, карточки; маскирование ПДн в логах
+  store.py         # SQLite: сессии, карточки; маскирование ПДн
+  chat.py          # диалог: общая история, передача между ассистентами, цикл инструментов
+  router.py        # единое окно: какой ассистент отвечает на реплику (prompts/router.md)
+  sessions.py      # сессии каналов: start / message / reset, история в SQLite
+  logs.py          # логи с маскированием телефонов и e-mail
   channels/
-    cli.py         # python -m app.channels.cli --assistant sales
-    telegram.py    # aiogram 3, отдельный бот на каждого ассистента
+    cli.py         # python -m app.channels.cli --assistant sales | --window
+    web.py         # aiohttp: API виджета + демо-страница; web_static/ — widget.js, widget.css
+    telegram.py    # aiogram 3: бот единого окна или одного ассистента (--assistant)
 eval/
   run.py           # прогон tests/cases/*.yaml + LLM-судья -> отчёт build/eval_<assistant>.md
 tools/
@@ -71,7 +76,10 @@ python tools/build_docx.py             # рендер в build/rendered/ + Word-
 # появятся по ходу этапов:
 python -m app.channels.cli --assistant sales
 python -m eval.run --assistant sales
-python -m app.channels.telegram --assistant hr
+python -m app.channels.cli --window
+python -m app.channels.web
+python -m app.channels.telegram            # единое окно; --assistant hr — один ассистент
+python -m eval.router --repeat 3
 pytest
 ```
 

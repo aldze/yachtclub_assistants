@@ -8,6 +8,8 @@ import json
 import os
 import re
 import sqlite3
+import threading
+from datetime import datetime, timezone
 from pathlib import Path
 
 from app.config import ROOT
@@ -25,6 +27,15 @@ CREATE TABLE IF NOT EXISTS handoff_cards (
     notify_status     TEXT             -- sent | console | error: ...
 );
 CREATE INDEX IF NOT EXISTS idx_cards_conversation ON handoff_cards(conversation_id);
+
+-- Сессии каналов (веб, Telegram): текущий диалог посетителя целиком
+CREATE TABLE IF NOT EXISTS sessions (
+    session_key     TEXT PRIMARY KEY,   -- <канал>:<id посетителя>
+    conversation_id TEXT NOT NULL,
+    active          TEXT NOT NULL,      -- активный ассистент
+    history         TEXT NOT NULL,      -- JSON: сообщения в формате OpenAI
+    updated_at      TEXT NOT NULL
+);
 """
 
 
@@ -38,12 +49,15 @@ class Store:
         self.path = Path(path) if path else db_path()
         if str(self.path) != ":memory:":
             self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._db = sqlite3.connect(str(self.path))
+        # Одно соединение на процесс; веб и Telegram обращаются из разных потоков — под замком
+        self._db = sqlite3.connect(str(self.path), check_same_thread=False)
         self._db.row_factory = sqlite3.Row
-        self._db.executescript(SCHEMA)
+        self._lock = threading.RLock()
+        with self._lock:
+            self._db.executescript(SCHEMA)
 
     def save_card(self, card: dict) -> None:
-        with self._db:
+        with self._lock, self._db:
             self._db.execute(
                 "INSERT INTO handoff_cards (card_id, created_at, conversation_id, channel, source_assistant,"
                 " target_department, priority, card) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -53,21 +67,49 @@ class Store:
             )
 
     def set_notify_status(self, card_id: str, status: str) -> None:
-        with self._db:
+        with self._lock, self._db:
             self._db.execute("UPDATE handoff_cards SET notify_status = ? WHERE card_id = ?", (status, card_id))
 
     def get_card(self, card_id: str) -> dict | None:
-        row = self._db.execute("SELECT card FROM handoff_cards WHERE card_id = ?", (card_id,)).fetchone()
+        with self._lock:
+            row = self._db.execute("SELECT card FROM handoff_cards WHERE card_id = ?", (card_id,)).fetchone()
         return json.loads(row["card"]) if row else None
 
     def cards_for_conversation(self, conversation_id: str) -> list[dict]:
-        rows = self._db.execute(
-            "SELECT card FROM handoff_cards WHERE conversation_id = ? ORDER BY created_at", (conversation_id,)
-        ).fetchall()
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT card FROM handoff_cards WHERE conversation_id = ? ORDER BY created_at", (conversation_id,)
+            ).fetchall()
         return [json.loads(r["card"]) for r in rows]
 
+    # ---------- сессии ----------
+
+    def save_session(self, session_key: str, conversation_id: str, active: str, history: list[dict]) -> None:
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        with self._lock, self._db:
+            self._db.execute(
+                "INSERT INTO sessions (session_key, conversation_id, active, history, updated_at)"
+                " VALUES (?, ?, ?, ?, ?) ON CONFLICT(session_key) DO UPDATE SET"
+                " conversation_id = excluded.conversation_id, active = excluded.active,"
+                " history = excluded.history, updated_at = excluded.updated_at",
+                (session_key, conversation_id, active, json.dumps(history, ensure_ascii=False), now),
+            )
+
+    def load_session(self, session_key: str) -> dict | None:
+        with self._lock:
+            row = self._db.execute("SELECT * FROM sessions WHERE session_key = ?", (session_key,)).fetchone()
+        if not row:
+            return None
+        return {"conversation_id": row["conversation_id"], "active": row["active"],
+                "history": json.loads(row["history"])}
+
+    def delete_session(self, session_key: str) -> None:
+        with self._lock, self._db:
+            self._db.execute("DELETE FROM sessions WHERE session_key = ?", (session_key,))
+
     def close(self) -> None:
-        self._db.close()
+        with self._lock:
+            self._db.close()
 
 
 # ---------- маскирование ПДн ----------

@@ -1,6 +1,7 @@
 """Чат с ассистентом в терминале.
 
     python -m app.channels.cli --assistant sales
+    python -m app.channels.cli --window      # единое окно: ассистента выбирает роутер
 
 Команды: /reset — новый диалог, /switch <id> — сменить ассистента (история сохраняется),
 /prompt — размер системного промпта, /cards — карточки передачи этого диалога, /help, /exit.
@@ -14,19 +15,21 @@ import sys
 from app.chat import Conversation
 from app.config import ConfigError, load_env, load_passports
 from app.llm import LLMError
+from app.router import Router, window_config
 
 HELP = ("Команды: /reset — новый диалог, /switch <id> — сменить ассистента, /prompt — размер промпта,\n"
         "         /cards — карточки передачи этого диалога, /exit — выход")
 
 
-def print_intro(conv: Conversation) -> None:
+def print_intro(conv: Conversation, starters: list[str] | None = None) -> None:
     p = conv.passport
+    starters = starters if starters is not None else p.conversation_starters
     print(f"\n=== {p.name} — {p.title} ({p.id}, {p.provider}/{p.model}) ===")
     greeting = conv.greet()
     if greeting:
         print(f"{p.name}: {greeting}")
-    if p.conversation_starters:
-        print("Например: " + " | ".join(p.conversation_starters))
+    if starters:
+        print("Например: " + " | ".join(starters))
 
 
 def handle_command(conv: Conversation, line: str) -> bool:
@@ -63,16 +66,19 @@ def main() -> int:
     passports = load_passports()
     ap = argparse.ArgumentParser(description="Чат с ассистентом в терминале")
     ap.add_argument("--assistant", default="sales", choices=list(passports), help="ассистент (по умолчанию sales)")
+    ap.add_argument("--window", action="store_true", help="единое окно: ассистента выбирает роутер")
     args = ap.parse_args()
 
     try:
-        conv = Conversation(args.assistant, passports)
+        start = window_config().get("default_assistant", "sales") if args.window else args.assistant
+        conv = Conversation(start, passports)
+        router = Router(passports) if args.window else None
     except ConfigError as e:
         print(f"Ошибка конфигурации: {e}", file=sys.stderr)
         return 1
 
     print(HELP)
-    print_intro(conv)
+    print_intro(conv, window_config().get("starters") if router else None)
     while True:
         try:
             line = input("\nВы: ").strip()
@@ -86,6 +92,11 @@ def main() -> int:
                 return 0
             continue
         cards_before = len(conv.cards)
+        if router:
+            route = router.route(conv.active, conv.history, line)
+            if route.switched:
+                print(f"[роутер: {conv.passport.name} → {passports[route.assistant].name} — {route.reason}]")
+                conv.handover(route.assistant, route.reason)
         try:
             reply = conv.send(line)
         except LLMError as e:

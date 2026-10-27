@@ -23,12 +23,14 @@ class OpenAICompatClient(LLMClient):
         # Адрес передаем явно: иначе SDK сам читает OPENAI_BASE_URL и пустая строка из .env ломает запрос
         self._client = openai.OpenAI(api_key=api_key, base_url=base_url or DEFAULT_BASE_URL)
 
-    def chat(self, messages: list[dict], tools: list[dict] | None = None) -> Reply:
+    def chat(self, messages: list[dict], tools: list[dict] | None = None, json_mode: bool = False) -> Reply:
         params: dict = {"model": self.model, "messages": messages, "temperature": self.temperature}
         # OpenAI перешел на max_completion_tokens; совместимые шлюзы обычно понимают только max_tokens
         params["max_tokens" if self.base_url else "max_completion_tokens"] = self.max_tokens
         if tools:
             params["tools"] = [{"type": "function", "function": t} for t in tools]
+        if json_mode:
+            params["response_format"] = {"type": "json_object"}
 
         try:
             response = self._client.chat.completions.create(**params)

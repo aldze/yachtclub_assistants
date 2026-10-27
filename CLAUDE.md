@@ -13,7 +13,7 @@
 Это учебный проект курса «Промпт-инжиниринг» с прицелом на реальный запуск. Полное ТЗ — `docs/SPEC.md`.
 
 ## Текущее состояние
-Готов контент: промпты, база знаний, тест-кейсы, конфиги, сборщик документа. **Этапы 1–2 готовы:** ядро (`app/config.py`, `app/prompts.py`, `app/chat.py`), адаптер OpenAI, CLI-чат; `create_handoff` (`app/tools/handoff.py`), SQLite и маскирование ПДн (`app/store.py`), тесты `pytest`. Дальше — этап 3. Инструменты интервью (`get_interview_slots`, `book_interview`) еще не реализованы — пропускаются. Окружение: `.venv` на Python 3.12.
+Готов контент: промпты, база знаний, тест-кейсы, конфиги, сборщик документа. **Этапы 1–3 готовы:** ядро (`app/config.py`, `app/prompts.py`, `app/chat.py`), адаптер OpenAI, CLI-чат; `create_handoff` (`app/tools/handoff.py`), SQLite и маскирование ПДн (`app/store.py`), тесты `pytest`; оценка `python -m eval.run` (судья — `eval/judge.md`, отчеты в `build/eval_*.md`). Дальше — этап 4. Инструменты интервью (`get_interview_slots`, `book_interview`) еще не реализованы — пропускаются. Окружение: `.venv` на Python 3.12.
 
 ## Источники истины (контент пишет человек)
 | Что | Где | Правило для Claude Code |

@@ -34,5 +34,8 @@ class LLMClient(ABC):
         self.max_tokens = max_tokens
 
     @abstractmethod
-    def chat(self, messages: list[dict], tools: list[dict] | None = None) -> Reply:
-        """Отправляет историю сообщений и возвращает ответ модели."""
+    def chat(self, messages: list[dict], tools: list[dict] | None = None, json_mode: bool = False) -> Reply:
+        """Отправляет историю сообщений и возвращает ответ модели.
+
+        json_mode=True — модель обязана ответить одним JSON-объектом (нужно LLM-судье).
+        """

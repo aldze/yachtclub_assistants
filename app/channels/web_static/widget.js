@@ -6,7 +6,9 @@
 (function () {
   "use strict";
   var script = document.currentScript;
-  var API = ((script && script.dataset.api) || new URL(script.src).origin).replace(/\/$/, "");
+  // без data-api адрес API — там же, откуда загружен виджет; работает и в подразделе (dzedze.ru/yachtsales)
+  var API = ((script && script.dataset.api) || new URL(script.src).href.replace(/\/static\/widget\.js(\?.*)?$/, ""))
+    .replace(/\/$/, "");
   var STORAGE_KEY = "ycw-session";
 
   var ICON_CHAT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>';

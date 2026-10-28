@@ -185,3 +185,31 @@ docker compose up -d --build          # DOMAIN не задан — сайт на
 curl -k https://localhost/health      # -k: локальный сертификат самоподписанный
 docker compose down                   # остановить (данные в томах сохранятся)
 ```
+
+## 13. Сервер, где уже есть nginx (несколько сайтов на одном VPS)
+
+Если порты 80 и 443 уже заняты nginx с вашими сайтами, Caddy не нужен. Ассистенты встают в подраздел существующего сайта, например `https://dzedze.ru/yachtsales/`.
+
+1. Скопируйте код, например в `/opt/yachtclub_assistants`, и создайте `.env` (раздел 5). В `.env` добавьте:
+
+   ```
+   COMPOSE_FILE=docker-compose.yml:deploy/compose.nginx.yml
+   WEB_PUBLISH_PORT=8097
+   ```
+
+   С этими строками `docker compose` не запускает Caddy, а web слушает только `127.0.0.1:8097`: снаружи он недоступен. Порт выберите свободный (`ss -tln`).
+2. Скопируйте блок из `deploy/nginx-location.conf` в `server { … }` сайта (`/etc/nginx/sites-available/<сайт>`) — **перед** `location / {`. Иначе запросы заберет основной сайт.
+3. Проверьте конфиг и примените, перед этим сохранив копию:
+
+   ```bash
+   cp /etc/nginx/sites-available/<сайт> /root/<сайт>.nginx.bak-$(date +%F)
+   nginx -t && systemctl reload nginx
+   ```
+
+4. Запуск — как в разделе 7: `docker compose up -d --build`, проверка — `curl https://<домен>/yachtsales/health`.
+
+Виджет сам понимает, что работает в подразделе: адрес API он берет из адреса, откуда загружен `widget.js`. На чужой сайт он встраивается так:
+
+```html
+<script src="https://<домен>/yachtsales/static/widget.js" defer></script>
+```

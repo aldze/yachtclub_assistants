@@ -1,0 +1,12 @@
+# Сервер, где уже есть nginx с HTTPS (например, несколько сайтов на одном VPS).
+# Caddy не запускается, web слушает только локальный порт, а nginx проксирует на него подраздел.
+# Подключение — в .env на сервере:
+#   COMPOSE_FILE=docker-compose.yml:deploy/compose.nginx.yml
+#   WEB_PUBLISH_PORT=8097
+# Блок для nginx — deploy/nginx-location.conf, подробно — docs/DEPLOY.md, раздел 13.
+services:
+  web:
+    ports:
+      - "127.0.0.1:${WEB_PUBLISH_PORT:-8097}:8080"
+  caddy:
+    profiles: [caddy]        # не запускается без явного --profile caddy

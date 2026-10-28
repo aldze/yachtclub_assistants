@@ -6,7 +6,7 @@
 (function () {
   "use strict";
   var script = document.currentScript;
-  // без data-api адрес API — там же, откуда загружен виджет; работает и в подразделе (dzedze.ru/yachtsales)
+  // без data-api адрес API — там же, откуда загружен виджет; работает и в подразделе сайта (example.ru/yachtsales)
   var API = ((script && script.dataset.api) || new URL(script.src).href.replace(/\/static\/widget\.js(\?.*)?$/, ""))
     .replace(/\/$/, "");
   var STORAGE_KEY = "ycw-session";
